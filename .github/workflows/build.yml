@@ -69,8 +69,8 @@ jobs:
               total = hit + s["cache_miss"]
               printf "### ccache\n\n%s: %d of %d compilations from cache (%.1f%%), build %s s\n\n",
                 runner, hit, total, total ? 100 * hit / total : 0, secs
-            }' >> "$GITHUB_STEP_SUMMARY"
-          { echo '```'; ccache -s; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+            }' | tee -a "$GITHUB_STEP_SUMMARY"
+          { echo '```'; ccache -s; echo '```'; } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Package
         run: |
