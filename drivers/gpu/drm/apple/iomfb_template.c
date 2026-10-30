@@ -285,6 +285,8 @@ static struct dcp_map_buf_resp dcpep_cb_map_piodma(struct apple_dcp *dcp,
 	/* use the piodma iommu domain to map against the right IOMMU */
 	ret = iommu_map_sgtable(dcp->iommu_dom, memdesc->dva, map,
 				IOMMU_READ | IOMMU_WRITE);
+	if (ret > 0)
+		memdesc->piodma_mapped = true;
 
 	/* HACK: expect size to be 16K aligned since the iommu API only maps
 	 *       full pages
@@ -334,6 +336,7 @@ static void dcpep_cb_unmap_piodma(struct apple_dcp *dcp,
 	 *       full pages
 	 */
 	iommu_unmap(dcp->iommu_dom, memdesc->dva, ALIGN(memdesc->size, SZ_16K));
+	memdesc->piodma_mapped = false;
 }
 
 /*
@@ -435,7 +438,7 @@ dcpep_cb_map_physical(struct apple_dcp *dcp, struct dcp_map_physical_req *req)
 
 	id = find_first_zero_bit(dcp->memdesc_map, DCP_MAX_MAPPINGS);
 	if (id >= DCP_MAX_MAPPINGS) {
-		dev_warn(dcp->dev, "DCP overflowed mapping table, ignoring\n");
+		dev_err(dcp->dev, "DCP overflowed mapping table at %llx\n", req->paddr);
 		return (struct dcp_map_physical_resp){};
 	}
 

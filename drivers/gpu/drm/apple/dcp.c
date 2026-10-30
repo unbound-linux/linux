@@ -703,7 +703,7 @@ static bool dcp_has_modes(struct apple_dcp *dcp)
 /*
  * A display released and requested again while IOMFB was powered off was
  * published with empty TimingElements, ColorElements and DisplayAttributes
- * (DCP 13.5 trace, j473). firstClientOpen() makes the DCP send them at start.
+ * (DCP 13.5 trace, j473). At start the DCP sent them after firstClientOpen().
  */
 static bool dcp_published_or_powered(struct apple_dcp *dcp, u32 seq)
 {
@@ -1280,6 +1280,7 @@ static int dcp_comp_bind(struct device *dev, struct device *main, void *data)
 static void dcp_comp_unbind(struct device *dev, struct device *main, void *data)
 {
 	struct apple_dcp *dcp = dev_get_drvdata(dev);
+	unsigned int i;
 	int ret;
 
 	if (!dcp)
@@ -1303,6 +1304,10 @@ static void dcp_comp_unbind(struct device *dev, struct device *main, void *data)
 	if (dcp->dptxep) {
 		afk_shutdown(dcp->dptxep);
 		dcp->dptxep = NULL;
+		for (i = 0; i < ARRAY_SIZE(dcp->dptxport); i++) {
+			dcp->dptxport[i].enabled = false;
+			dcp->dptxport[i].connected = false;
+		}
 	}
 
 	if (dcp->ibootep) {
@@ -1338,6 +1343,7 @@ static void dcp_comp_unbind(struct device *dev, struct device *main, void *data)
 	cancel_work_sync(&dcp->vblank_wq);
 
 	dcp_release_memdescs(dcp);
+	dcp_replace_modes(dcp, NULL, 0);
 
 	if (dcp->shmem) {
 		dma_free_coherent(dev, DCP_SHMEM_SIZE, dcp->shmem, dcp->shmem_iova);

@@ -239,8 +239,10 @@ void dcp_hotplug(struct work_struct *work)
 	connector = container_of(work, struct apple_connector, hotplug_wq);
 
 	dcp = platform_get_drvdata(connector->dcp);
+	mutex_lock(&dcp->modes_lock);
 	dev_info(dcp->dev, "%s() connected:%d valid_mode:%d nr_modes:%u\n", __func__,
 		 connector->connected, dcp->valid_mode, dcp->nr_modes);
+	mutex_unlock(&dcp->modes_lock);
 
 	if (!connector->connected) {
 		drm_edid_free(connector->drm_edid);
@@ -608,6 +610,9 @@ int iomfb_start_rtkit(struct apple_dcp *dcp)
 void dcp_release_memdesc(struct apple_dcp *dcp,
 			 struct dcp_mem_descriptor *memdesc)
 {
+	if (memdesc->piodma_mapped && dcp->iommu_dom)
+		iommu_unmap(dcp->iommu_dom, memdesc->dva,
+			    ALIGN(memdesc->size, SZ_16K));
 	if (memdesc->buf) {
 		sg_free_table(&memdesc->map);
 		dma_free_coherent(dcp->dev, ALIGN(memdesc->size, SZ_16K),

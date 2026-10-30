@@ -594,6 +594,9 @@ static void dptxport_init(struct apple_epic_service *service, const char *name,
 			return;
 		}
 		service->ep->dcp->dptxport[unit].unit = unit;
+		service->ep->dcp->dptxport[unit].max_lane_count = 0;
+		service->ep->dcp->dptxport[unit].lane_count = 0;
+		service->ep->dcp->dptxport[unit].lane_count_set = false;
 		service->ep->dcp->dptxport[unit].service = service;
 		service->ep->dcp->dptxport[unit].enabled = true;
 		service->cookie = (void *)&service->ep->dcp->dptxport[unit];
