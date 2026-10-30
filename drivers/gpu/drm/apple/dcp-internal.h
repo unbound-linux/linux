@@ -188,6 +188,7 @@ struct apple_dcp {
 	bool hotplug_deferred;
 	bool hotplug_deferred_connected;
 	bool suspended;
+	u32 unplug_seq;
 	u32 publish_seq;
 	u32 connect_seq;
 	bool valid_mode;

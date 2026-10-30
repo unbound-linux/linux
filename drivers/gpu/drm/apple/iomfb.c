@@ -494,6 +494,9 @@ int dcp_crtc_atomic_modeset(struct drm_crtc *crtc,
 		break;
 	}
 
+	if (ret && dcp->connector)
+		schedule_work(&dcp->connector->hotplug_wq);
+
 	return ret;
 }
 
