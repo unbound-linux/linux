@@ -553,12 +553,6 @@ static int dptxport_call(struct apple_epic_service *service, u32 idx,
         case DPTX_APCALL_ACTIVATE:
 		return dptxport_call_activate(service, data, data_size,
 					      reply, reply_size);
-	case DPTX_APCALL_DEVICE_NOT_RESPONDING:
-		dptx->not_responding = true;
-		memcpy(reply, data, min(reply_size, data_size));
-		if (reply_size >= 4)
-			memset(reply, 0, 4);
-		return 0;
 	case DPTX_APCALL_DEACTIVATE:
 		return dptxport_call_deactivate(service, data, data_size,
 						reply, reply_size);
@@ -566,6 +560,10 @@ static int dptxport_call(struct apple_epic_service *service, u32 idx,
 		/* just try to ACK and hope for the best... */
 		dev_info(service->ep->dcp->dev, "DPTXPort: acking unhandled call %u\n",
 			idx);
+		fallthrough;
+	case DPTX_APCALL_DEVICE_NOT_RESPONDING:
+		if (idx == DPTX_APCALL_DEVICE_NOT_RESPONDING)
+			WRITE_ONCE(dptx->not_responding, true);
 		fallthrough;
 	case DPTX_APCALL_GET_DOWN_SPREAD:
 	case DPTX_APCALL_SET_DOWN_SPREAD:

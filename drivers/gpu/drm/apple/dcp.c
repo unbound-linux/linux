@@ -381,7 +381,7 @@ static int dcp_dptx_connect(struct apple_dcp *dcp, u32 port)
 
 	reinit_completion(&dcp->dptxport[port].linkcfg_completion);
 	dcp->connect_seq = READ_ONCE(dcp->publish_seq);
-	dcp->dptxport[port].not_responding = false;
+	WRITE_ONCE(dcp->dptxport[port].not_responding, false);
 	dcp->dptxport[port].atcphy = dcp->phy;
 	dptxport_connect(dcp->dptxport[port].service, 0, dcp->dptx_phy, dcp->dptx_die);
 	dptxport_request_display(dcp->dptxport[port].service);
@@ -770,14 +770,8 @@ static void dcp_work_hpd_resume(struct work_struct *work)
 {
 	struct apple_dcp *dcp = container_of(work, struct apple_dcp, hpd_resume_wq);
 
-	if (!gpiod_get_value_cansleep(dcp->hdmi_hpd)) {
-		if (dcp->dptxport[0].connected && !READ_ONCE(dcp->powered))
-			schedule_delayed_work(&dcp->release_wq, DCP_RELEASE_DELAY);
-		return;
-	}
-
-	if (!dcp->dptxport[0].connected && !dcp_dptx_connect(dcp, 0))
-		schedule_work(&dcp->sink_modes_wq);
+	if (!gpiod_get_value_cansleep(dcp->hdmi_hpd))
+		disconnected_hpd_event(dcp->connector);
 }
 
 static void dcp_stop_hpd_work(struct apple_dcp *dcp)
@@ -794,11 +788,13 @@ static void dcp_stop_hpd_work(struct apple_dcp *dcp)
 void dcp_poweron(struct platform_device *pdev)
 {
 	struct apple_dcp *dcp = platform_get_drvdata(pdev);
+	bool requested = false;
 
 	mutex_lock(&dcp->power_mutex);
 	WRITE_ONCE(dcp->powered, true);
 	mutex_unlock(&dcp->power_mutex);
 	dcp_wake_publish_waiters(dcp);
+	cancel_work_sync(&dcp->hpd_resume_wq);
 	cancel_work_sync(&dcp->sink_modes_wq);
 	cancel_delayed_work_sync(&dcp->release_wq);
 
@@ -811,18 +807,25 @@ void dcp_poweron(struct platform_device *pdev)
 		 * After s2idle the DCP called DeviceNotResponding and failed
 		 * prepareLink() for the requested display (j473).
 		 */
-		if (connected && dcp->dptxport[0].not_responding)
+		if (connected && READ_ONCE(dcp->dptxport[0].not_responding))
 			dcp_dptx_disconnect(dcp, 0);
-		if (connected && !dcp->dptxport[0].connected)
-			dcp_dptx_connect(dcp, 0);
-		if (connected && dcp->dptxport[0].connected &&
-		    !wait_var_event_timeout(&dcp->publish_seq,
-					    READ_ONCE(dcp->publish_seq) != dcp->connect_seq,
-					    DCP_PUBLISH_TIMEOUT))
-			dev_err(dcp->dev, "display not published before modeset\n");
+		/*
+		 * A display requested while IOMFB was off was published with
+		 * empty TimingElements (j473), so power IOMFB on first.
+		 */
+		if (connected && !dcp->dptxport[0].connected) {
+			_dcp_poweron(dcp, true);
+			requested = true;
+			if (!dcp_dptx_connect(dcp, 0) &&
+			    !wait_var_event_timeout(&dcp->publish_seq,
+						    READ_ONCE(dcp->publish_seq) != dcp->connect_seq,
+						    DCP_PUBLISH_TIMEOUT))
+				dev_err(dcp->dev, "display not published before modeset\n");
+		}
 	}
 
-	_dcp_poweron(dcp, false);
+	if (!requested)
+		_dcp_poweron(dcp, false);
 	dcp->iomfb_on = true;
 	mutex_unlock(&dcp->power_mutex);
 
@@ -1526,6 +1529,9 @@ static int dcp_platform_suspend(struct device *dev)
 	if (dcp->hdmi_hpd_irq) {
 		disable_irq(dcp->hdmi_hpd_irq);
 		dcp_stop_hpd_work(dcp);
+		spin_lock(&dcp->hotplug_lock);
+		dcp->suspended = true;
+		spin_unlock(&dcp->hotplug_lock);
 		dcp_dptx_disconnect(dcp, 0);
 	}
 	/*
@@ -1546,6 +1552,9 @@ static int dcp_platform_resume(struct device *dev)
 		mutex_lock(&dcp->power_mutex);
 		WRITE_ONCE(dcp->stopping, false);
 		mutex_unlock(&dcp->power_mutex);
+		spin_lock(&dcp->hotplug_lock);
+		dcp->suspended = false;
+		spin_unlock(&dcp->hotplug_lock);
 		enable_irq(dcp->hdmi_hpd_irq);
 		schedule_work(&dcp->hpd_resume_wq);
 	}

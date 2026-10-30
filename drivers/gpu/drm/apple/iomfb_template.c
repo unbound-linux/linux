@@ -1076,7 +1076,7 @@ static void dcp_apply_hotplug(struct apple_dcp *dcp, bool connected)
 
 static void dcpep_cb_hotplug(struct apple_dcp *dcp, u64 *connected)
 {
-	bool deferred;
+	bool deferred, ignored;
 
 	/* DCP issues hotplug_gated callbacks after SetPowerState() calls on
 	 * devices with display (macbooks, imacs). This must not result in
@@ -1089,6 +1089,7 @@ static void dcpep_cb_hotplug(struct apple_dcp *dcp, u64 *connected)
 		return;
 
 	spin_lock(&dcp->hotplug_lock);
+	ignored = dcp->suspended;
 	deferred = dcp->during_modeset;
 	if (deferred) {
 		dcp->hotplug_deferred = true;
@@ -1096,7 +1097,7 @@ static void dcpep_cb_hotplug(struct apple_dcp *dcp, u64 *connected)
 	}
 	spin_unlock(&dcp->hotplug_lock);
 
-	if (!deferred)
+	if (!deferred && !ignored)
 		dcp_apply_hotplug(dcp, !!*connected);
 }
 
