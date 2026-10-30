@@ -90,6 +90,7 @@ struct dcp_display_mode {
 	u32 min_vrr;
 	u32 max_vrr;
 	struct dcp_color_mode sdr_rgb;
+	struct dcp_color_mode sdr_rgb_8;
 	struct dcp_color_mode sdr_444;
 	struct dcp_color_mode sdr;
 	struct dcp_color_mode best;

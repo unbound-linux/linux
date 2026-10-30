@@ -463,13 +463,21 @@ int dcp_crtc_atomic_modeset(struct drm_crtc *crtc,
 {
 	struct apple_crtc *apple_crtc = to_apple_crtc(crtc);
 	struct apple_dcp *dcp = platform_get_drvdata(apple_crtc->dcp);
+	struct drm_connector_state *conn_state = NULL;
 	struct drm_crtc_state *crtc_state;
+	u8 max_bpc = 0;
 	int ret = -EIO;
 	bool modeset;
 
 	crtc_state = drm_atomic_get_new_crtc_state(commit, crtc);
 	if (!crtc_state)
 		return 0;
+
+	if (dcp->connector)
+		conn_state = drm_atomic_get_new_connector_state(commit,
+								&dcp->connector->base);
+	if (conn_state)
+		max_bpc = conn_state->max_requested_bpc;
 
 	modeset = drm_atomic_crtc_needs_modeset(crtc_state) || !dcp->valid_mode;
 
@@ -482,13 +490,13 @@ int dcp_crtc_atomic_modeset(struct drm_crtc *crtc,
 
 	switch (dcp->fw_compat) {
 	case DCP_FIRMWARE_V_12_3:
-		ret = iomfb_modeset_v12_3(dcp, crtc_state);
+		ret = iomfb_modeset_v12_3(dcp, crtc_state, max_bpc);
 		break;
 	case DCP_FIRMWARE_V_13_5:
-		ret = iomfb_modeset_v13_3(dcp, crtc_state);
+		ret = iomfb_modeset_v13_3(dcp, crtc_state, max_bpc);
 		break;
 	case DCP_FIRMWARE_V_14_7:
-		ret = iomfb_modeset_v14_7_0(dcp, crtc_state);
+		ret = iomfb_modeset_v14_7_0(dcp, crtc_state, max_bpc);
 		break;
 	default:
 		WARN_ONCE(true, "Unexpected firmware version: %u\n",

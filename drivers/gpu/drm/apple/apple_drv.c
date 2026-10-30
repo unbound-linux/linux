@@ -239,10 +239,21 @@ static void appledrm_connector_cleanup(struct drm_connector *connector)
 	kfree(to_apple_connector(connector));
 }
 
+#define APPLE_MAX_BPC 10
+
+static void apple_connector_reset(struct drm_connector *connector)
+{
+	drm_atomic_helper_connector_reset(connector);
+	if (connector->state) {
+		connector->state->max_requested_bpc = APPLE_MAX_BPC;
+		connector->state->max_bpc = APPLE_MAX_BPC;
+	}
+}
+
 static const struct drm_connector_funcs apple_connector_funcs = {
 	.fill_modes		= drm_helper_probe_single_connector_modes,
 	.destroy		= appledrm_connector_cleanup,
-	.reset			= drm_atomic_helper_connector_reset,
+	.reset			= apple_connector_reset,
 	.atomic_duplicate_state	= drm_atomic_helper_connector_duplicate_state,
 	.atomic_destroy_state	= drm_atomic_helper_connector_destroy_state,
 	.detect			= apple_connector_detect,
@@ -340,6 +351,12 @@ static int apple_probe_per_dcp(struct device *dev,
 
 	ret = drm_connector_init(drm, &connector->base, &apple_connector_funcs,
 				 dcp_get_connector_type(dcp));
+	if (ret)
+		return ret;
+
+	apple_connector_reset(&connector->base);
+	ret = drm_connector_attach_max_bpc_property(&connector->base, 8,
+						    APPLE_MAX_BPC);
 	if (ret)
 		return ret;
 

@@ -1322,8 +1322,28 @@ static struct dcp_color_mode *dcp_color_mode_of(struct dcp_display_mode *mode)
 	return NULL;
 }
 
+static struct dcp_color_mode *dcp_limit_color_mode(struct dcp_display_mode *mode,
+						   u8 max_bpc)
+{
+	struct dcp_color_mode *cmode = dcp_color_mode_of(mode);
+	struct dcp_color_mode *limited = NULL;
+
+	if (!cmode || !max_bpc || cmode->depth <= max_bpc)
+		return cmode;
+
+	if (mode->sdr_rgb.score >= 0 && mode->sdr_rgb.depth <= max_bpc)
+		limited = &mode->sdr_rgb;
+	else if (mode->sdr_rgb_8.score >= 0 && mode->sdr_rgb_8.depth <= max_bpc)
+		limited = &mode->sdr_rgb_8;
+	if (!limited)
+		return cmode;
+
+	mode->color_mode_id = limited->id;
+	return limited;
+}
+
 static int dcp_prepare_mode(struct apple_dcp *dcp,
-			    const struct drm_display_mode *drm_mode)
+			    const struct drm_display_mode *drm_mode, u8 max_bpc)
 {
 	struct dcp_display_mode mode, *match;
 	struct dcp_color_mode *cmode;
@@ -1339,7 +1359,7 @@ static int dcp_prepare_mode(struct apple_dcp *dcp,
 		return -EIO;
 	}
 
-	cmode = dcp_color_mode_of(&mode);
+	cmode = dcp_limit_color_mode(&mode, max_bpc);
 	dev_info(dcp->dev,
 		 "set_digital_out_mode(color:%d timing:%d) " DRM_MODE_FMT "\n",
 		 mode.color_mode_id, mode.timing_mode_id, DRM_MODE_ARG(drm_mode));
@@ -1362,7 +1382,7 @@ static int dcp_prepare_mode(struct apple_dcp *dcp,
 }
 
 int DCP_FW_NAME(iomfb_modeset)(struct apple_dcp *dcp,
-			       struct drm_crtc_state *crtc_state)
+			       struct drm_crtc_state *crtc_state, u8 max_bpc)
 {
 	u32 result, seq, unplugs;
 	int ret;
@@ -1373,7 +1393,7 @@ int DCP_FW_NAME(iomfb_modeset)(struct apple_dcp *dcp,
 	unplugs = dcp->unplug_seq;
 	spin_unlock(&dcp->hotplug_lock);
 
-	ret = dcp_prepare_mode(dcp, &crtc_state->mode);
+	ret = dcp_prepare_mode(dcp, &crtc_state->mode, max_bpc);
 	if (ret)
 		return ret;
 	ret = dcp_set_mode(dcp, &result);
@@ -1388,7 +1408,7 @@ int DCP_FW_NAME(iomfb_modeset)(struct apple_dcp *dcp,
 	    wait_var_event_timeout(&dcp->publish_seq,
 				   READ_ONCE(dcp->publish_seq) != seq,
 				   DCP_PUBLISH_TIMEOUT)) {
-		ret = dcp_prepare_mode(dcp, &crtc_state->mode);
+		ret = dcp_prepare_mode(dcp, &crtc_state->mode, max_bpc);
 		if (ret)
 			return ret;
 		ret = dcp_set_mode(dcp, &result);

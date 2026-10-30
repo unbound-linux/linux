@@ -364,6 +364,7 @@ static int parse_color_modes(struct dcp_parse_ctx *handle,
 	int ret = 0;
 	out->sdr_444.score = -1;
 	out->sdr_rgb.score = -1;
+	out->sdr_rgb_8.score = -1;
 	out->sdr.score = -1;
 	out->best.score = -1;
 
@@ -413,6 +414,9 @@ static int parse_color_modes(struct dcp_parse_ctx *handle,
 				       cmode.pixel_encoding);
 
 		if (cmode.eotf == DCP_EOTF_SDR_GAMMA) {
+			if (cmode.pixel_encoding == DCP_COLOR_FORMAT_RGB &&
+			    cmode.depth <= 8)
+				fill_color_mode(&out->sdr_rgb_8, &cmode);
 			if (cmode.pixel_encoding == DCP_COLOR_FORMAT_RGB &&
 				cmode.depth <= 10)
 				fill_color_mode(&out->sdr_rgb, &cmode);
