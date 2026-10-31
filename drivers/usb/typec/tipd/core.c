@@ -6,6 +6,7 @@
  * Author: Heikki Krogerus <heikki.krogerus@linux.intel.com>
  */
 
+#include <linux/debugfs.h>
 #include <linux/i2c.h>
 #include <linux/acpi.h>
 #include <linux/gpio/consumer.h>
@@ -225,6 +226,7 @@ struct cd321x {
 
 	struct fwnode_handle *connector_fwnode;
 	bool dp_hpd; /* HPD high was reported to DRM */
+	struct dentry *fake_hpd_dir; /* TEST ONLY, never merge */
 };
 
 static enum power_supply_property tps6598x_psy_props[] = {
@@ -995,6 +997,18 @@ static void cd321x_update_work(struct work_struct *work)
 		cd321x_dp_hpd_notify(cd321x, true);
 }
 
+/* TEST ONLY, never merge: drive the DRM oob hotplug path without a sink */
+static int cd321x_fake_hpd_set(void *data, u64 val)
+{
+	struct cd321x *cd321x = data;
+
+	guard(mutex)(&cd321x->tps.lock);
+	dev_info(cd321x->tps.dev, "fake HPD %s\n", val ? "high" : "low");
+	cd321x_dp_hpd_notify(cd321x, !!val);
+	return 0;
+}
+DEFINE_DEBUGFS_ATTRIBUTE(cd321x_fake_hpd_fops, NULL, cd321x_fake_hpd_set, "%llu\n");
+
 static void cd321x_queue_status(struct cd321x *cd321x)
 {
 	cd321x->update_status.status_changed |= cd321x->update_status.status ^ cd321x->tps.status;
@@ -1481,6 +1495,10 @@ cd321x_register_port(struct tps6598x *tps, struct fwnode_handle *fwnode)
 
 	cd321x->connector_fwnode = fwnode_handle_get(fwnode);
 
+	cd321x->fake_hpd_dir = debugfs_create_dir(dev_name(tps->dev), NULL);
+	debugfs_create_file_unsafe("fake_hpd", 0200, cd321x->fake_hpd_dir, cd321x,
+				   &cd321x_fake_hpd_fops);
+
 	return 0;
 
 err_unregister_altmodes:
@@ -1504,6 +1522,8 @@ cd321x_unregister_port(struct tps6598x *tps)
 {
 	struct cd321x *cd321x = container_of(tps, struct cd321x, tps);
 
+	debugfs_remove_recursive(cd321x->fake_hpd_dir);
+	cd321x->fake_hpd_dir = NULL;
 	fwnode_handle_put(cd321x->connector_fwnode);
 	cd321x->connector_fwnode = NULL;
 	typec_mux_put(cd321x->mux);
@@ -1924,6 +1944,9 @@ tps25750_register_port(struct tps6598x *tps, struct fwnode_handle *fwnode)
 static void cd321x_remove(struct tps6598x *tps)
 {
 	struct cd321x *cd321x = container_of(tps, struct cd321x, tps);
+
+	debugfs_remove_recursive(cd321x->fake_hpd_dir);
+	cd321x->fake_hpd_dir = NULL;
 
 	/* Also keeps cd321x_dr_set() from queueing it again */
 	disable_delayed_work_sync(&cd321x->update_work);
